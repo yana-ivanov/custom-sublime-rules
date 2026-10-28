@@ -1,0 +1,99 @@
+name: "Link: Microsoft 365 / Entra doppelganger domain — CaptiveCrunch AitM credential phishing"
+description: |
+  Detects emails containing links to Microsoft 365 or Entra ID doppelganger domains
+  used in adversary-in-the-middle (AitM) credential phishing and device code phishing
+  operations. The specific domains detected are attributed to Storm-2945, a sub-cluster
+  of Midnight Blizzard (Russian SVR), in the CaptiveCrunch campaign disclosed by
+  Microsoft Threat Intelligence on July 31, 2026.
+
+  CaptiveCrunch targets business travelers by compromising hotel and conference center
+  Wi-Fi captive portals to redirect traffic through actor-controlled AitM infrastructure.
+  Victims are presented with fake Microsoft 365 authentication pages hosted on lookalike
+  domains designed to harvest credentials, session tokens, and OAuth device codes.
+  The same doppelganger domains are also delivered via targeted phishing emails to
+  lure victims into initiating a device code authentication flow that authenticates
+  the attacker's session rather than their own.
+
+  Detected domains (CaptiveCrunch IOCs, Microsoft Threat Intelligence, July 2026):
+  - ms365-device[.]com — device code flow redirect
+  - ms365-live[.]com — device code flow redirect
+  - m365-owa[.]com — AitM infrastructure
+  - owa-ms365[.]com — AitM infrastructure
+
+  This rule targets the email delivery layer — emails containing links to these
+  doppelganger domains regardless of the specific path or endpoint. The existing
+  link_microsoft_device_code_phish.yml rule targets legitimate Microsoft device
+  login URLs used in device code phishing; this rule targets the AitM infrastructure
+  layer where victims are redirected to attacker-controlled lookalike domains.
+type: "rule"
+severity: "critical"
+source: |
+  type.inbound
+
+  // email contains a link to a known CaptiveCrunch doppelganger domain
+  // or a Microsoft 365 / Entra lookalike domain pattern
+  and any(body.links,
+          // known CaptiveCrunch IOC domains (Microsoft Threat Intelligence, July 2026)
+          .href_url.domain.root_domain in (
+            "ms365-device.com",
+            "ms365-live.com",
+            "m365-owa.com",
+            "owa-ms365.com"
+          )
+
+          // broader Microsoft 365 / Entra lookalike pattern
+          // matches domains like ms365-[anything].com, m365-[anything].com
+          // that are NOT the legitimate microsoft.com or microsoftonline.com
+          or (
+            regex.icontains(.href_url.domain.root_domain,
+                            '^ms365-',
+                            '^m365-',
+                            '^owa-ms',
+                            '^entra-',
+                            '^microsoftentra-',
+                            '^microsoft365-'
+            )
+            and .href_url.domain.root_domain not in~ (
+              "microsoft.com",
+              "microsoftonline.com",
+              "microsoft365.com",
+              "office.com",
+              "live.com",
+              "outlook.com"
+            )
+          )
+  )
+
+  // negate legitimate Microsoft sender domains
+  and sender.email.domain.root_domain not in~ (
+    "microsoft.com",
+    "microsoftonline.com",
+    "office.com",
+    "live.com",
+    "outlook.com"
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Adversary-in-the-Middle"
+  - "Social engineering"
+  - "Spoofing"
+detection_methods:
+  - "URL analysis"
+  - "Sender analysis"
+  - "Header analysis"
+references:
+  - "https://www.microsoft.com/en-us/security/blog/2026/07/31/captivecrunch-midnight-blizzard-targets-travelers-worldwide-for-malware-delivery-and-credential-theft/"
+  - "https://reliaquest.com/blog/threat-spotlight-dns-poisoning-tactics-expand-to-hospitality/"
+  - "https://www.microsoft.com/en-us/security/blog/2025/02/13/storm-2372-conducts-device-code-phishing-campaign/"
+id: "cc74a184-d9db-582a-959b-8107476df0da"

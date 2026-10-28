@@ -1,0 +1,108 @@
+name: "Body: onload= event handler with Base64 image fragment payload — OWAReaper/half-click XSS delivery"
+description: |
+  Detects emails containing the delivery pattern used by OWAReaper, a JavaScript
+  browser implant deployed by TA488 (Void Blizzard / Laundry Bear) against
+  Microsoft Outlook Web Access via CVE-2026-42897 (July 22, 2026).
+
+  The technique exploits a failure in OWA's HTML sanitizer to strip JavaScript
+  event handlers from email body content. When a recipient opens the email in a
+  vulnerable OWA instance, the onload= handler fires automatically — no link
+  click, no attachment, no further interaction required.
+
+  Attack chain:
+  1. Email arrives with no links and no attachments — vague informational lure
+     referencing supply chains, energy markets, or public health data
+  2. Email body contains social media icon image tags with Base64-encoded payload
+     fragments hidden after # symbols in the src attribute — the browser stops
+     parsing at # and renders a normal image; the payload fragment is readable
+     as DOM text
+  3. An onload= event handler in the email HTML fires when OWA renders the
+     message in the reading pane — CVE-2026-42897 allows this handler to execute
+     despite OWA's sanitizer
+  4. The loader function reads all image src attributes, extracts content after
+     each # symbol, concatenates and Base64-decodes the fragments, and executes
+     the assembled OWAReaper implant inside the victim's authenticated OWA session
+  5. OWAReaper immediately rewrites the email on Exchange to remove exploit
+     content, then grants itself Owner-level permissions on every mail folder
+     via stolen OAuth tokens from installed add-ins — persistence survives
+     password reset, session revocation, and endpoint reimaging
+
+  This rule is additive to body_roundpress_html_import_tagsplitting_xss.yml,
+  which targets the @import tag-splitting technique used against Zimbra/Roundcube
+  (ZimReaper, CVE-2025-66376). OWAReaper uses a different technique targeting
+  OWA specifically — the two rules cover different attack surfaces.
+
+  CVE-2026-42897 affects on-premises Exchange OWA. Microsoft disclosed on
+  May 14, 2026 with confirmation of active exploitation; permanent patch
+  shipped June 9, 2026. Infrastructure for this campaign was created in
+  March 2026 — two months before disclosure.
+
+  Targeting: US and European government, telecommunications, finance,
+  hospitality, aerospace. Campaign volume and breadth are unusual for TA488
+  and may be deliberate camouflage to blend with mass-mailing spam.
+
+  Reference analysis: https://yanaivanov.com/analysis/roundpress_part3.html
+
+type: "rule"
+severity: "critical"
+source: |
+  type.inbound
+
+  and (
+    // onload= event handler in body HTML — primary OWAReaper trigger
+    // CVE-2026-42897 allows this to execute in vulnerable OWA reading pane
+    regex.icontains(body.html.raw,
+                    '<[^>]+\sonload\s*=\s*["\']?[^>]{0,200}'
+    )
+
+    // OR Base64 fragment hidden after # in image src — payload staging pattern
+    or regex.icontains(body.html.raw,
+                       '<img[^>]+src\s*=\s*["\']?[^"\'>\s]*;base64,[A-Za-z0-9+/]{20,}#[A-Za-z0-9+/=]{10,}'
+    )
+
+    // OR both signals together — highest confidence OWAReaper pattern
+    or (
+      regex.icontains(body.html.raw,
+                      '<[^>]+\sonload\s*=\s*["\']?[^>]{0,200}'
+      )
+      and regex.icontains(body.html.raw,
+                          'src\s*=\s*["\']?[^"\'>\s]*#[A-Za-z0-9+/=]{10,}'
+      )
+    )
+  )
+
+  // no links and no attachments — OWAReaper lures are deliberately clean
+  and length(body.links) == 0
+  and length(attachments) == 0
+
+  // not a transactional or notification email
+  and not (
+    strings.icontains(body.html.raw, "unsubscribe")
+    and strings.icontains(body.html.raw, "mailing list")
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Evasion"
+  - "Social engineering"
+  - "Scripting"
+detection_methods:
+  - "Content analysis"
+  - "HTML analysis"
+  - "Header analysis"
+references:
+  - "https://www.proofpoint.com/us/blog/threat-insight/cleaning-out-inboxes-ta488-comes-outlook-another-half-click-exploit"
+  - "https://www.bleepingcomputer.com/news/security/russian-hackers-exploit-exchange-owa-zero-day-for-long-term-mailbox-access/"
+  - "https://nvd.nist.gov/vuln/detail/CVE-2026-42897"
+  - "https://yanaivanov.com/analysis/roundpress_part3.html"
+id: "f158fe57-6f01-51a2-bde0-284defbdb873"

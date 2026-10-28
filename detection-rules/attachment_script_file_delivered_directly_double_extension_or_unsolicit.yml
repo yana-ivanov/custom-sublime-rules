@@ -1,0 +1,60 @@
+name: "Attachment: script file delivered directly (double extension or unsolicited sender)"
+description: |
+  Detects emails containing script files (.vbs, .vbe, .wsf, .wsh, .hta) delivered
+  directly as email attachments, either from unsolicited senders or with a
+  filename that uses a double extension to disguise the script as a document.
+  Confirmed active campaigns: Formbook, AsyncRAT and AgentTesla delivered via
+  direct VBScript attachment across Danish, German, Turkish and English lures
+  (Sep 2026). HTA delivery observed in the same period includes XWorm via a
+  payment-themed lure, RemcosRAT, and a file named Captcha.hta consistent with a
+  ClickFix-style verification lure moved into an attachment.
+  Gap: attachment_disallowed_file_type_in_archive.yml covers these file types
+  inside archives only. This rule covers direct attachment delivery.
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+  and any(attachments,
+          .file_extension in~ ("vbs", "vbe", "wsf", "wsh", "hta")
+          and (
+
+            // disguised as a document or image, regardless of sender history
+            regex.icontains(.file_name,
+                            '\.(doc|docx|xls|xlsx|xlsm|ppt|pptx|pdf|txt|rtf|csv|jpe?g|png|gif|htm|html)\.(vbs|vbe|wsf|wsh|hta)$'
+            )
+
+            // or delivered by a sender we do not correspond with
+            or (
+              (
+                not profile.by_sender().solicited
+                or (
+                  profile.by_sender().any_messages_malicious_or_spam
+                  and not profile.by_sender().any_messages_benign
+                )
+              )
+              and not profile.by_sender().any_messages_benign
+            )
+          )
+  )
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Scripting"
+  - "Social engineering"
+  - "Evasion"
+detection_methods:
+  - "File analysis"
+  - "Sender analysis"
+  - "Header analysis"
+references:
+  - "https://bazaar.abuse.ch"
+  - "https://attack.mitre.org/techniques/T1059/005/"
+  - "https://attack.mitre.org/techniques/T1218/005/"
+id: "c01b6e47-645b-5628-9b34-05d2c54d7deb"

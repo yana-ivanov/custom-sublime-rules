@@ -1,0 +1,119 @@
+name: "Attachment: India tax authority impersonation with malicious archive or executable — ITR/GST filing season lure"
+description: |
+  Detects emails impersonating Indian government tax authorities — the Income Tax
+  Department (ITD), Central Board of Direct Taxes (CBDT), Ministry of Finance, or
+  GST authority — that deliver malicious ZIP archives, APK files, or executables
+  disguised as tax notices, penalty warnings, ITR filing utilities, or GST refund
+  documents.
+
+  Active campaigns targeting Indian taxpayers and businesses during the AY2026-27
+  ITR filing season (April-July 2026) include:
+  - Operation DragonReturn (China-aligned, DcRAT, May-June 2026)
+  - Operation TaxShadow (multi-region, in-memory malware, June 2026)
+  - TAX#TRIDENT (Windows targeting via fake assessment pages, May 2026)
+  - Silver Fox ABCDoor backdoor campaign (China-nexus, April-May 2026)
+  - GST phishing → Remcos RAT via .NET infection chain (July 2026)
+
+  These campaigns are particularly relevant to US organizations employing Indian
+  contractors or visa holders who may receive tax authority communications on
+  personal or corporate devices with access to enterprise systems.
+
+  Delivery mechanisms include email with ZIP/RAR/APK attachments, WhatsApp
+  forwarding of malicious files, and fake government portal downloads.
+  This rule targets the email-delivered attachment variant.
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // impersonates Indian tax authority in sender display name or subject
+  and (
+    regex.icontains(strings.replace_confusables(sender.display_name),
+                    'income tax (?:department|dept|india)|CBDT|central board of direct taxes|ministry of finance|GST(?:IN)? (?:department|authority|council|refund|notice)|income tax (?:notice|penalty|assessment|return|filing)|ITD (?:notice|alert|penalty)'
+    )
+    or regex.icontains(strings.replace_confusables(subject),
+                       'income tax (?:notice|penalty|assessment|refund|return|demand|alert)|ITR (?:filing|verification|defect|notice)|CBDT (?:notice|circular|alert)|GST (?:refund|notice|penalty|demand|ARN)|tax (?:penalty|demand|assessment|scrutiny|notice)'
+    )
+  )
+
+  // message contains a malicious attachment — ZIP, RAR, APK, or executable
+  and any(attachments,
+          (
+            // archive containing potential malware
+            .file_extension in~ ("zip", "rar", "7z", "gz", "tar")
+            or .content_type in (
+              "application/zip",
+              "application/x-rar-compressed",
+              "application/x-7z-compressed"
+            )
+          )
+          or (
+            // Android APK — common in WhatsApp-forwarded campaigns arriving via email
+            .file_extension =~ "apk"
+            or .content_type =~ "application/vnd.android.package-archive"
+          )
+          or (
+            // Windows executable disguised as tax utility
+            .file_extension in~ ("exe", "msi", "cmd", "bat", "ps1", "vbs", "js", "hta")
+          )
+          or (
+            // .NET assembly or DLL — used in DcRAT and ABCDoor delivery chains
+            .file_extension in~ ("dll", "bin")
+            and (
+              strings.icontains(.file_name, "tax", "ITR", "GST", "ITD", "CBDT", "refund", "notice", "penalty", "assessment")
+            )
+          )
+  )
+
+  // NLU detects credential theft or urgency
+  and (
+    any(ml.nlu_classifier(body.current_thread.text).intents,
+        .name == "cred_theft" and .confidence in ("medium", "high")
+    )
+    or any(ml.nlu_classifier(body.current_thread.text).entities,
+           .name == "urgency"
+    )
+    // India-specific urgency patterns — 72-hour deadlines, penalty language
+    or strings.icontains(body.current_thread.text,
+                         "72 hours",
+                         "immediate action required",
+                         "tax demand notice",
+                         "penalty under section",
+                         "scrutiny assessment",
+                         "income tax refund",
+                         "GST refund",
+                         "ITR defect",
+                         "outstanding tax demand",
+                         "e-verification pending"
+    )
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Evasion"
+  - "Social engineering"
+  - "Impersonation: Brand"
+  - "Scripting"
+detection_methods:
+  - "Content analysis"
+  - "File analysis"
+  - "Natural Language Understanding"
+  - "Sender analysis"
+  - "Header analysis"
+references:
+  - "https://cybersecuritynews.com/hackers-using-fake-income-tax-departments-notice-to-deploy-malware/"
+  - "https://securelist.com/silver-fox-abcdoor-backdoor/116789/"
+  - "https://otx.alienvault.com/pulse/operation-dragonreturn"
+  - "https://otx.alienvault.com/pulse/operation-taxshadow"
+  - "https://otx.alienvault.com/pulse/tax-season-open-season"
+id: "e44a4ffc-8d45-5c09-850a-b867d8cdebc7"

@@ -1,0 +1,116 @@
+name: "Body: CSS injection patterns consistent with webmail sanitizer bypass and credential theft"
+description: |
+  Detects emails containing CSS patterns associated with webmail sanitizer bypass
+  techniques documented by Portswigger Research (August 2026) and operationally
+  deployed by APT28 in Operation Roundish against Ukrainian government Roundcube
+  installations (April 2026).
+
+  The techniques weaponize CSS features that webmail sanitizers allow as legitimate
+  styling but which can be abused to break out of email message boundaries, overlay
+  trusted UI with fake login forms, capture keystrokes, and exfiltrate authentication
+  tokens — all without JavaScript and without requiring the victim to click a link.
+
+  Detected patterns:
+  - position:fixed — used to overlay the entire webmail interface with attacker content
+  - <select>/<option> elements — disguised as password inputs in CSS keyloggers
+  - :has() and :checked pseudo-classes — used to detect keystrokes and trigger exfiltration
+  - @font-face with unicode-range/descent-override — used to measure digit heights
+    for token extraction without external requests
+  - image-set() with CSS variable fallback — Gmail image proxy bypass technique
+  - @keyframes with hex-escaped selectors — CSS mutation bypass technique
+
+  None of these patterns appear in legitimate marketing emails, newsletters, or
+  business correspondence. Their presence in an inbound email body is highly
+  anomalous and warrants inspection.
+
+  The existing body_cve_2023_5631.yml rule targets a specific SVG-based XSS
+  exploit in Roundcube. This rule targets the broader CSS injection attack surface
+  across all major webmail platforms including Gmail, Outlook, Yahoo, Fastmail,
+  and ProtonMail.
+
+  Affected platforms confirmed by Portswigger Research (August 6, 2026):
+  Gmail, Outlook, Yahoo Mail, AOL Mail, Fastmail, ProtonMail.
+  Outlook label-jacking and Gmail image-set() bypass unpatched as of August 2026.
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+  and length(attachments) == 0
+
+  // require at least 2 of the following CSS injection signals
+  // each signal alone has some false positive risk
+  // two or more together is highly specific to the documented attack techniques
+  and 2 of (
+
+    // position:fixed — used to overlay webmail interface with fake login screen
+    // no legitimate email needs to position elements over the entire screen
+    strings.icontains(body.html.raw, "position:fixed", "position: fixed"),
+
+    // select/option elements in email body — disguised as password inputs
+    // legitimate emails do not contain form select menus
+    (
+      strings.icontains(body.html.raw, "<select", "<option")
+      and strings.icontains(body.html.raw, "appearance:none", "-webkit-text-security")
+    ),
+
+    // :has() and :checked pseudo-classes — keylogger detection mechanism
+    // used to react to option selection and trigger background URL exfiltration
+    (
+      regex.icontains(body.html.raw, ':has\s*\(')
+      and regex.icontains(body.html.raw, ':checked')
+    ),
+
+    // @font-face with unicode-range or descent-override
+    // used to measure digit heights for token extraction without external requests
+    (
+      strings.icontains(body.html.raw, "@font-face")
+      and strings.icontains(body.html.raw,
+                            "unicode-range",
+                            "descent-override",
+                            "ascent-override"
+      )
+    ),
+
+    // image-set() with CSS variable fallback — Gmail image proxy bypass
+    // legitimate emails do not use CSS variable fallbacks in image-set()
+    regex.icontains(body.html.raw, 'image-set\s*\(\s*var\s*\('),
+
+    // @keyframes with hex-escaped content — CSS mutation bypass technique
+    // used to smuggle malicious selectors past webmail sanitizers
+    regex.icontains(body.html.raw, '@keyframes\s+[^{]*\\[0-9a-fA-F]{2}'),
+
+    // label element with for attribute targeting non-form elements
+    // used for CSS hotwiring — intercepting clicks on trusted UI elements
+    (
+      regex.icontains(body.html.raw, '<label[^>]+for\s*=')
+      and strings.icontains(body.html.raw, "position:fixed", "position: fixed")
+    )
+
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Evasion"
+  - "Exploit"
+  - "Scripting"
+  - "Social engineering"
+detection_methods:
+  - "Content analysis"
+  - "HTML analysis"
+  - "Header analysis"
+references:
+  - "https://portswigger.net/research/css-the-bomb-inside-your-inbox"
+  - "https://otx.alienvault.com/pulse/operation-roundish-apt28-roundcube"
+  - "https://www.darkreading.com/cyberattacks-data-breaches/css-hidden-threat-lurking-inbox"
+  - "https://yanaivanov.com/writing/css_field_note.html"
+id: "d050e57e-9c16-5ef5-b676-d3f49e26de06"

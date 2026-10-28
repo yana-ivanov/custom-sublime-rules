@@ -1,0 +1,95 @@
+name: "Link: Amazon/AWS typosquat domain delivering malicious payload"
+description: |
+  Detects emails containing links to domains that typosquat Amazon or AWS
+  infrastructure domains — containing both "amazon" and "aws" in the domain
+  name but not matching any legitimate Amazon domain.
+
+  Confirmed active campaign (ThreatFox, September 7, 2026):
+  amazonawsapirds.com — serving 12+ unique JavaScript payloads tagged as
+  Coruna malware at 100% confidence. The domain mimics amazonaws.com at a
+  glance but is attacker-controlled infrastructure.
+
+  The attack relies on visual similarity to trusted AWS infrastructure.
+  Victims and security tools that check for "amazon" or "aws" in the URL
+  may incorrectly infer legitimacy. Legitimate AWS domains are well-defined:
+  amazonaws.com, amazon.com, aws.amazon.com — any domain containing both
+  "amazon" and "aws" that does not match these patterns is suspicious.
+
+  Legitimate Amazon/AWS domains negated:
+  amazonaws.com, amazon.com, aws.com, awsevents.com, amazonses.com,
+  awseducate.com, awsacademy.com, repost.aws, marketplace.aws
+
+  Reference: https://yanaivanov.com/analysis/trust_tax_analysis.html
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // link contains a domain with both "amazon" and "aws" — typosquat pattern
+  and any(body.links,
+      (
+        strings.icontains(.href_url.domain.domain, "amazon")
+        and strings.icontains(.href_url.domain.domain, "aws")
+      )
+      // not a legitimate Amazon/AWS domain
+      and not .href_url.domain.root_domain in~ (
+        "amazonaws.com",
+        "amazon.com",
+        "aws.com",
+        "awsevents.com",
+        "amazonses.com",
+        "awseducate.com",
+        "awsacademy.com",
+        "awsmp-seller-conference.com",
+        "aws-experience.com",
+        "awscustomercouncil.com",
+        "repost.aws",
+        "marketplace.aws",
+        "amazonaws.cn",
+        "amazon.cn",
+        "amazon.co.uk",
+        "amazon.de",
+        "amazon.fr",
+        "amazon.co.jp",
+        "amazon.ca",
+        "amazon.com.au",
+        "amazon.com.br",
+        "amazon.com.mx",
+        "amazon.in",
+        "amazon.it",
+        "amazon.es",
+        "amazon.nl",
+        "amazon.pl",
+        "amazon.se",
+        "amazon.com.tr"
+      )
+  )
+
+  // unsolicited sender
+  and not profile.by_sender().solicited
+  and not profile.by_sender().any_messages_benign
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Evasion"
+  - "Social engineering"
+detection_methods:
+  - "URL analysis"
+  - "Sender analysis"
+  - "Header analysis"
+references:
+  - "https://threatfox.abuse.ch"
+  - "https://yanaivanov.com/analysis/trust_tax_analysis.html"
+id: "53794e8a-092f-5124-80cd-4ae2f1400e85"

@@ -1,0 +1,128 @@
+name: "BEC: Real estate closing wire fraud — title company or closing attorney impersonation with wire instruction language"
+description: |
+  Detects emails impersonating title companies, closing attorneys, escrow agents,
+  or real estate parties that contain wire transfer instructions combined with
+  real estate closing urgency language. Real Estate Wire Fraud (REWF) is a
+  sub-category of BEC in which attackers redirect closing wire transfers by
+  impersonating trusted transaction parties at the moment the buyer expects
+  to receive wire instructions.
+
+  FBI IC3 2025: 12,368 complaints and $275.1 million in losses from real estate
+  wire fraud — a 90% increase from 2023. Recovery rate approximately 58%;
+  42% of funds permanently lost even with rapid FBI intervention.
+
+  The attack relies on emails arriving at the expected time, referencing correct
+  transaction details, and creating urgency around a closing deadline the buyer
+  already knows is real. The detection window is the email layer — before the
+  wire transfer is initiated.
+type: "rule"
+severity: "critical"
+source: |
+  type.inbound
+
+  // NLU detects BEC intent
+  and any(ml.nlu_classifier(body.current_thread.text).intents,
+          .name == "bec" and .confidence in ("medium", "high")
+  )
+
+  // REQUIRED: message contains wire instruction signals
+  // routing + account number pattern — specific to wire fraud
+  and (
+    (
+      regex.icontains(body.current_thread.text,
+                      'routing\s*(?:number|num|no\.?|#)\s*:?\s*\d{5,}'
+      )
+      and regex.icontains(body.current_thread.text,
+                          'account\s*(?:number|num|no\.?|#)\s*:?\s*\d{5,}'
+      )
+    )
+    // or explicit "updated wire instructions" language — high specificity fraud signal
+    or strings.icontains(body.current_thread.text,
+                         "updated wire instructions",
+                         "new wire instructions",
+                         "revised wire instructions",
+                         "disregard previous wire",
+                         "wire transfer instructions have changed",
+                         "updated banking information"
+    )
+  )
+
+  // REQUIRED: real estate closing context
+  and strings.icontains(body.current_thread.text,
+                         "closing",
+                         "escrow",
+                         "settlement",
+                         "title company",
+                         "closing attorney",
+                         "closing agent",
+                         "closing funds",
+                         "wire by",
+                         "funds due at closing"
+  )
+
+  // require 1 additional suspicious signal
+  and 1 of (
+
+    // sender domain recently registered — lookalike infrastructure
+    network.whois(sender.email.domain).days_old < 30,
+
+    // reply-to mismatch — attacker routing replies to separate account
+    (
+      length(headers.reply_to) > 0
+      and all(headers.reply_to,
+              .email.domain.root_domain != sender.email.domain.root_domain
+      )
+    ),
+
+    // display name contains known title company or closing attorney language
+    // but sender domain does not match
+    (
+      strings.icontains(sender.display_name,
+                         "title",
+                         "escrow",
+                         "closing",
+                         "settlement",
+                         "realty",
+                         "properties",
+                         "associates"
+      )
+      and not strings.icontains(sender.email.domain.domain,
+                                  strings.split(sender.display_name, " ")[0]
+      )
+    ),
+
+    // link to recently registered domain — phishing page for credential harvest
+    any(body.links,
+        network.whois(.href_url.domain).days_old < 30
+    ),
+
+    // freemail sender — title companies do not use Gmail/Yahoo for closings
+    sender.email.domain.domain in $free_email_providers
+
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "BEC/Fraud"
+tactics_and_techniques:
+  - "Social engineering"
+  - "Spoofing"
+  - "Impersonation: Brand"
+detection_methods:
+  - "Content analysis"
+  - "Header analysis"
+  - "Natural Language Understanding"
+  - "Sender analysis"
+  - "Whois"
+references:
+  - "https://www.ic3.gov/AnnualReport/Reports/2025_IC3Report.pdf"
+  - "https://www.fbi.gov/file-repository/fy-2022-fbi-congressional-report-business-email-compromise-and-real-estate-wire-fraud-111422.pdf"
+  - "https://yanaivanov.com/analysis/rewf_analysis.html"
+id: "d724fbe8-9df1-53ad-94b1-a7a201618671"

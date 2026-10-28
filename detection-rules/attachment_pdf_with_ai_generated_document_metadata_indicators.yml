@@ -1,0 +1,92 @@
+name: "Attachment: PDF with AI-generated document metadata indicators"
+description: |
+  Detects PDF attachments from unsolicited senders that contain metadata
+  indicators consistent with AI-generated document creation — specifically
+  known local LLM tool strings (Ollama, GPT4All, LM Studio), completely
+  absent creator/producer metadata on a document that otherwise has content,
+  or metadata fields that are internally inconsistent with the claimed creator
+  tool's known output patterns.
+
+  AI-generated decoy documents are being used by nation-state threat actors
+  (Kimsuky/North Korea, Operation GitPower, August 2026) to deliver
+  spearphishing lures that are indistinguishable from legitimate organizational
+  communications. Genians Security Center found forensic metadata evidence of
+  AI generation in Operation GitPower decoy PDFs.
+
+  Sublime Security's existing attachment_pdf_malicious_creator_juliep.yml
+  demonstrates that PDF creator metadata is readable and actionable at the
+  email delivery layer. This rule extends that capability to detect AI tool
+  signatures. False positive risk is low for the LLM tool string detection
+  (Ollama/GPT4All are not used to generate legitimate business PDFs) and
+  moderate for the absent metadata signal (requires combination with
+  unsolicited sender check).
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+  and length(attachments) > 0
+
+  and any(attachments,
+          .file_extension =~ "pdf"
+          and (
+            // Known local LLM tool strings in creator or producer metadata
+            // Ollama, GPT4All, LM Studio do not generate legitimate business PDFs
+            any(file.explode(.),
+                any(.scan.exiftool.fields,
+                    (
+                      .key in ("Creator", "Author", "Producer", "CreatorTool", "XMPToolkit")
+                      and strings.icontains(.value,
+                                            "ollama",
+                                            "gpt4all",
+                                            "lm studio",
+                                            "lmstudio",
+                                            "llama.cpp",
+                                            "llamacpp",
+                                            "localai",
+                                            "koboldcpp"
+                      )
+                    )
+                )
+            )
+
+            // Completely absent metadata on a non-trivial PDF
+            // legitimate business PDFs almost always carry creator metadata
+            or (
+              .size > 10000
+              and any(file.explode(.),
+                      length(.scan.exiftool.fields) < 3
+                      and not any(.scan.exiftool.fields,
+                                  .key in ("Creator", "Author", "Producer", "CreatorTool")
+                      )
+              )
+            )
+          )
+  )
+
+  // negate solicited senders — expected attachments from known contacts
+  and not profile.by_sender().solicited
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Evasion"
+  - "Social engineering"
+  - "Impersonation: Brand"
+detection_methods:
+  - "File analysis"
+  - "Content analysis"
+  - "Sender analysis"
+  - "Exif analysis"
+references:
+  - "https://blog.genians.com/kimsuky-integrates-ai-into-attack-operations"
+  - "https://yanaivanov.com/analysis/kimsuky_gitpower_analysis.html"
+id: "97969135-58b7-555f-84ef-3a53cb691478"

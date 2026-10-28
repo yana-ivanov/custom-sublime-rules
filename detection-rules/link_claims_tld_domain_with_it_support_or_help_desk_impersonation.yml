@@ -1,0 +1,96 @@
+name: "Link: .claims TLD domain with IT support or help desk impersonation — ShinyHunters vishing precursor"
+description: |
+  Detects emails containing links to or sent from domains using the .claims TLD
+  combined with IT support, help desk, or SSO impersonation language.
+
+  The .claims TLD has been confirmed as active ShinyHunters attack infrastructure.
+  On August 17, 2026, ReliaQuest documented a widespread ShinyHunters campaign
+  registering domains following the company.claims pattern to impersonate help
+  desks and IT teams across multiple organizations. On August 22, 2026, ReliaQuest
+  itself was targeted using reliaquest.claims — confirming operational use.
+
+  Attack pattern:
+  1. Attacker registers company.claims lookalike domain
+  2. Deploys fake SSO portal (Okta, Microsoft, internal) behind CDN infrastructure
+  3. Sends phishing email directing target to the .claims domain
+  4. Follows up with vishing call impersonating named IT/security staff
+  5. Victim enters credentials and approves MFA push on the fake portal
+  6. Attacker uses stolen session to access identity dashboard and SaaS platforms
+
+  The email delivery is the precursor to the vishing call — detecting it at the
+  email layer provides the earliest possible intervention point before the phone
+  call and credential theft occur.
+
+  This rule is additive to existing IT impersonation and Okta impersonation rules,
+  which do not target the .claims TLD specifically.
+
+  Reference analysis: https://yanaivanov.com/analysis/shinyhunters-operational-lifecycle.html
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  and (
+    // sender domain uses .claims TLD
+    sender.email.domain.tld == "claims"
+
+    // OR body links to a .claims domain
+    or any(body.links,
+        .href_url.domain.tld == "claims"
+    )
+  )
+
+  // combined with IT support, help desk, SSO, or security team impersonation
+  and (
+    regex.icontains(sender.display_name,
+                    'IT (?:support|helpdesk|help desk|team|department|security)|
+                     help\s*desk|service\s*desk|security\s*team|
+                     IT\s*admin|sysadmin|system\s*administrator'
+    )
+    or regex.icontains(subject.subject,
+                       'IT (?:support|alert|notice|request|ticket)|
+                        help\s*desk|service\s*desk|
+                        (?:password|account|access|login|sign.?in)\s+(?:reset|alert|required|expir)|
+                        (?:verify|confirm|validate)\s+(?:your\s+)?(?:identity|account|access)|
+                        security\s+(?:alert|notice|verification|check)|
+                        (?:SSO|MFA|two.factor|2FA)\s+(?:setup|required|alert|reset)'
+    )
+    or regex.icontains(body.current_thread.text,
+                       'IT (?:support|helpdesk|help desk|department)|
+                        help\s*desk|service\s*desk|
+                        (?:reset|verify|confirm)\s+(?:your\s+)?(?:password|credentials|access)|
+                        (?:SSO|single sign.?on|MFA|authenticator)\s+(?:setup|reset|required)|
+                        (?:click|visit|go to|navigate to)\s+(?:the\s+)?(?:portal|login|sign.?in\s+page)'
+    )
+  )
+
+  // negate legitimate .claims domains — insurance, legal, legitimate use
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+  // not a known solicited sender
+  and not profile.by_sender().solicited
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "BEC/Fraud"
+tactics_and_techniques:
+  - "Impersonation: Employee"
+  - "Social engineering"
+  - "Evasion"
+  - "Out of band pivot"
+detection_methods:
+  - "Content analysis"
+  - "Sender analysis"
+  - "URL analysis"
+  - "Header analysis"
+references:
+  - "https://reliaquest.com/blog/threat-spotlight-social-engineering-attempt-against-reliaquest-what-we-found/"
+  - "https://www.bleepingcomputer.com/news/security/reliaquest-confirms-failed-data-theft-attack-after-shinyhunters-breach/"
+  - "https://yanaivanov.com/analysis/shinyhunters-operational-lifecycle.html"
+id: "679fb135-faa2-5e81-9cce-9a596a33f84d"

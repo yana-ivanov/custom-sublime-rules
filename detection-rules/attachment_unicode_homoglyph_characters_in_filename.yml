@@ -1,0 +1,79 @@
+name: "Attachment: Unicode homoglyph characters in filename"
+description: |
+  Detects email attachments whose filenames contain Unicode confusable characters
+  (homoglyphs) that visually resemble ASCII characters but are technically
+  different codepoints — a technique used to bypass filename-based security
+  controls and deceive recipients into believing a file is something it is not.
+
+  The same Unicode confusable technique used in Business Email Compromise (BEC)
+  to spoof sender domains is now confirmed in malware filenames at the filesystem
+  level. Security tools that match on attachment filenames using simple string
+  comparison are bypassed because the Unicode characters do not match the ASCII
+  string being checked.
+
+  Confirmed active sample (MalwareBazaar, September 12, 2026):
+  𝙎𝙀𝙏𝙐𝙋.exe — Vidar infostealer, signed, using mathematical bold italic
+  Unicode characters (U+1D5EE through U+1D5F7 range) to spell "SETUP" while
+  bypassing filename string matching for "setup.exe" or "SETUP.exe".
+
+  Detection approach: strings.replace_confusables() normalizes Unicode
+  confusable characters to their ASCII equivalents. Comparing the normalized
+  filename to the original filename detects homoglyph substitution. A mismatch
+  between the original and normalized filename indicates Unicode confusables
+  are present.
+
+  Companion rule to the merged homoglyph BEC sender domain rule
+  (PR #4596 — sublime-security/sublime-rules).
+
+  Reference: https://yanaivanov.com/analysis/homoglyph_bec_analysis.html
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // attachment filename contains Unicode confusable characters
+  and any(attachments,
+    // normalized filename differs from original — confusables detected
+    strings.replace_confusables(.file_name) != .file_name
+
+    // limit to executable and script file types where this is malicious
+    and (
+      .file_extension in~ (
+        "exe", "msi", "dll", "ps1", "vbs", "bat", "cmd",
+        "js", "hta", "scr", "pif", "com", "lnk"
+      )
+      or (
+        // also catch confusable extension hiding — e.g. Unicode in extension itself
+        strings.replace_confusables(.file_extension) != .file_extension
+      )
+    )
+  )
+
+  // unsolicited sender
+  and not profile.by_sender().solicited
+  and not profile.by_sender().any_messages_benign
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Evasion"
+  - "Social engineering"
+detection_methods:
+  - "File analysis"
+  - "Sender analysis"
+  - "Header analysis"
+references:
+  - "https://bazaar.abuse.ch"
+  - "https://yanaivanov.com/analysis/homoglyph_bec_analysis.html"
+  - "https://github.com/sublime-security/sublime-rules/pull/4596"
+  - "https://www.unicode.org/reports/tr36/"
+id: "d6144fd3-6d3e-51b1-8175-a294f618d83a"

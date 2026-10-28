@@ -1,0 +1,109 @@
+name: "Link: Microsoft device code lure in email body — EvilTokens PhaaS delivery pattern"
+description: |
+  Detects emails containing Microsoft device code authentication instructions
+  directly in the email body from unsolicited senders.
+
+  This rule is additive to link_microsoft_device_code_authentication_with_suspicious_indicators.yml,
+  which detects device code phishing via ml.link_analysis() of the linked page.
+  That rule cannot fire when the linked page uses AES-GCM client-side encryption
+  with rotating keys and IVs — a technique confirmed in EvilTokens PhaaS (February
+  2026) where the Cloudflare Worker serving the phishing page rotates the encryption
+  key on every request, causing sandbox replays to fail decryption.
+
+  This rule catches the email body signal directly — the device code instructions
+  that must appear in the email regardless of whether the linked page can be
+  analyzed. Legitimate Microsoft services never instruct recipients to visit
+  microsoft.com/devicelogin via an unsolicited email.
+
+  EvilTokens attack chain:
+  1. Email impersonates Adobe, DocuSign, SharePoint, voicemail, or calendar invite
+  2. Body instructs victim to visit microsoft.com/devicelogin and enter a code
+  3. Victim completes a fully legitimate Microsoft MFA challenge on real Microsoft
+     infrastructure — no fake login page, no credential capture
+  4. Attacker receives a valid OAuth refresh token granting persistent M365 access
+     for up to 90 days, bypassing MFA entirely
+  5. LLaMA-powered component automatically extracts banking details from compromised
+     inboxes for BEC follow-on operations
+
+  The AES-GCM encryption evasion technique makes this one of the few device code
+  phishing variants where email body analysis is more reliable than link analysis.
+
+  Reference: Sekoia TDR (March 2026), Abnormal AI EvilTokens analysis (2026)
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // device code instruction language in email body
+  and (
+    regex.icontains(body.current_thread.text,
+                    'microsoft\.com\/devicelogin',
+                    'microsoft\.com\/consumer\/oauth2\/v2\.0\/deviceauth',
+                    'aka\.ms\/devicelogin'
+    )
+    or (
+      strings.icontains(body.current_thread.text, 'devicelogin')
+      and strings.icontains(body.current_thread.text, 'microsoft')
+    )
+    or regex.icontains(body.current_thread.text,
+                       '(?:enter|type|use|input)\s+(?:the\s+)?code\s+(?:at|on|in)\s+(?:the\s+)?(?:microsoft|device)',
+                       'visit\s+microsoft\.com\s+and\s+enter',
+                       'go\s+to\s+microsoft\.com.*enter.*code'
+    )
+  )
+
+  // combined with Microsoft brand impersonation or trusted service lure
+  and (
+    regex.icontains(sender.display_name,
+                    'microsoft|adobe|docusign|sharepoint|onedrive|outlook|teams'
+    )
+    or regex.icontains(subject.subject,
+                       'document|shared|voicemail|calendar|invitation|review|sign|verify|access'
+    )
+    or any(ml.nlu_classifier(body.current_thread.text).intents,
+           .name == "cred_theft" and .confidence in ("medium", "high")
+    )
+  )
+
+  // not from legitimate Microsoft infrastructure
+  and not (
+    sender.email.domain.root_domain in (
+      "microsoft.com",
+      "microsoftonline.com",
+      "sharepointonline.com",
+      "office.com",
+      "outlook.com"
+    )
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+  // unsolicited sender
+  and not profile.by_sender().solicited
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "BEC/Fraud"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Social engineering"
+  - "Evasion"
+  - "Out of band pivot"
+detection_methods:
+  - "Content analysis"
+  - "Sender analysis"
+  - "Natural Language Understanding"
+  - "Header analysis"
+references:
+  - "https://blog.sekoia.io/new-widespread-eviltokens-kit-device-code-phishing-as-a-service-part-1/"
+  - "https://abnormal.ai/blog/eviltokens-oauth-device-codes-bec-operations"
+  - "https://thehackernews.com/2026/07/new-ghost-phishing-wave-is-breaking.html"
+id: "457a431f-d3a8-5a2a-9c49-0999a7c92345"

@@ -1,0 +1,100 @@
+name: "Brand impersonation: GoToResolve / GoTo RMM remote support lure"
+description: |
+  Detects emails impersonating GoToResolve (formerly GoToAssist) remote support
+  platform from non-GoTo sender domains, combined with remote support, patch,
+  or session lures.
+
+  GoToResolve is an RMM and remote support tool used by IT teams and MSPs.
+  Confirmed delivery vectors observed in MalwareBazaar (September 11, 2026):
+  - crm.msi — signed GoToResolve MSI installer distributed as malware
+  - ivCardco.vbs — VBScript dropper tagged GoToResolve
+
+  RMM tools are high-value attack targets because they provide legitimate
+  privileged access to endpoints. Attackers impersonate RMM vendors to trick
+  IT staff into installing malicious versions or granting remote access.
+
+  Legitimate GoTo sending domains: goto.com, gotomeeting.com, gotowebinar.com,
+  gotoassist.com, gotoresolve.com, logmein.com (acquired by GoTo).
+
+  Related rules: ScreenConnect cloud C2 (link_screenconnect_cloud_c2),
+  N-able N-central impersonation (brand_impersonation_nable_ncentral_rmm).
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // display name or subject impersonates GoTo products
+  and (
+    regex.icontains(sender.display_name,
+                    '\bGoTo\b|\bGoToResolve\b|\bGoToAssist\b|\bGoToSupport\b|\bLogMeIn\b'
+    )
+    or regex.icontains(subject.subject,
+                       '\bGoToResolve\b|\bGoToAssist\b|\bGoTo\s+(?:Support|Remote|Session)\b'
+    )
+  )
+
+  // sender is NOT from legitimate GoTo domains
+  and not sender.email.domain.root_domain in~ (
+    "goto.com",
+    "gotomeeting.com",
+    "gotowebinar.com",
+    "gotoassist.com",
+    "gotoresolve.com",
+    "logmein.com",
+    "logmeinrescue.com",
+    "getgo.com"
+  )
+
+  // combined with remote support or download lure
+  and (
+    regex.icontains(subject.subject,
+                    'support|remote|session|install|update|patch|connect|access'
+    )
+    or regex.icontains(body.current_thread.text,
+                       '(?:remote|support)\s+session',
+                       '(?:install|download|run)\s+(?:the\s+)?(?:agent|installer|client|tool)',
+                       'click.*(?:here|link).*(?:connect|join|start)',
+                       '(?:your|the)\s+(?:support|remote)\s+(?:session|ticket)'
+    )
+    or any(body.links,
+        regex.icontains(.href_url.path,
+                        '\.(exe|msi|zip|ps1)(\?|$)'
+        )
+    )
+    or any(attachments,
+        .file_extension in~ ("exe", "msi", "zip", "vbs", "ps1")
+    )
+  )
+
+  // not a reply thread
+  and (length(headers.references) == 0 or headers.in_reply_to is null)
+
+  // unsolicited sender
+  and not profile.by_sender().solicited
+  and not profile.by_sender().any_messages_benign
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Remote access trojan"
+  - "Social engineering"
+detection_methods:
+  - "Sender analysis"
+  - "Content analysis"
+  - "Header analysis"
+  - "File analysis"
+  - "URL analysis"
+references:
+  - "https://bazaar.abuse.ch"
+  - "https://attack.mitre.org/techniques/T1219/"
+id: "5f72006f-9b82-5a12-8228-b57c95245936"

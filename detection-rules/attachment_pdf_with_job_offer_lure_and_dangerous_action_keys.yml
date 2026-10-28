@@ -1,0 +1,65 @@
+name: "Attachment: PDF with job offer lure and dangerous action keys — Operation Dream Job pattern"
+description: |
+  Detects PDF attachments containing dangerous action keys (JavaScript, OpenAction,
+  Launch, AA, EmbeddedFile) combined with job offer lure language, consistent with
+  Lazarus Group's Operation Dream Job campaign (August 2026) and broader state-sponsored
+  fake job offer delivery patterns targeting defense, aerospace, and aviation professionals.
+
+  Operation Dream Job uses two infection chains:
+  - DLL sideloading via MISTPEN downloader
+  - Trojanized PDF viewer (SecurityPDF) deploying the Troy backdoor
+
+  Both chains leverage fake job offer PDFs delivered via LinkedIn recruiter outreach
+  and email. The PDF attachment contains embedded executable content or dangerous
+  action keys that execute when the document is opened.
+
+  This rule combines PDF structural analysis (via YARA companion rule) with email-layer
+  context signals: unsolicited sender, job offer NLU intent, and PDF attachment. The
+  combination is highly specific to malicious delivery — legitimate job offer PDFs
+  from known recruiters do not contain JavaScript, Launch actions, or embedded files.
+
+  Companion YARA rule: pdf_job_lure_dangerous_keys (submitted alongside this PR)
+  Reference analysis: https://yanaivanov.com/analysis/hiring_trap_analysis.html
+type: "rule"
+severity: "critical"
+source: |
+  type.inbound
+
+  // PDF attachment present
+  and any(attachments, .file_type == "pdf")
+
+  // YARA scan detects dangerous PDF keys combined with job lure language
+  and any(filter(attachments, .file_type == "pdf"),
+          any(file.explode(.),
+              any(.scan.yara.matches,
+                  .name in ("pdf_job_lure_dangerous_keys")
+              )
+          )
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "PDF"
+  - "Evasion"
+  - "Social engineering"
+  - "Impersonation: Employee"
+detection_methods:
+  - "File analysis"
+  - "YARA"
+  - "Sender analysis"
+  - "Content analysis"
+references:
+  - "https://otx.alienvault.com/pulse/operation-dream-job-lazarus-2026"
+  - "https://attack.mitre.org/techniques/T1566/001/"
+  - "https://attack.mitre.org/groups/G0032/"
+  - "https://yanaivanov.com/analysis/hiring_trap_analysis.html"
+id: "db40ab3c-9eab-5844-843f-d2275b8026fd"

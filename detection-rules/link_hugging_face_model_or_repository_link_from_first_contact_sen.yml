@@ -1,0 +1,126 @@
+name: "Link: Hugging Face model or repository link from first-contact sender"
+description: |
+  Detects emails containing links to Hugging Face model repositories or spaces
+  from senders with no prior contact history.
+
+  Hugging Face is the dominant platform for hosting and sharing open-source AI
+  models — often described as the "GitHub of AI." Its trusted domain reputation
+  and open publishing model make it an attractive attack surface for supply chain
+  attacks targeting developers and data scientists.
+
+  Confirmed attack patterns using Hugging Face as a delivery or staging vector:
+
+  1. Typosquatting and infostealer delivery: Attacker publishes a malicious
+     repository mimicking a legitimate organization (e.g., Open-OSS/privacy-filter
+     impersonating OpenAI). Email or social engineering directs victims to the
+     repository. On model load, malicious code executes. Confirmed May 2026 —
+     244,000 downloads in 18 hours before removal.
+
+  2. Trusted CDN for payload staging: Lazarus Group (North Korea) used Hugging
+     Face to host second-stage payloads in an npm supply chain attack, specifically
+     because the domain bypasses network perimeter controls that flag unknown
+     infrastructure. Victims directed via email.
+
+  3. Android RAT delivery: Attackers directed victims via email or messaging to
+     download a fake security application (TrustBastion) hosted on Hugging Face.
+     Confirmed January 2026 by Bitdefender.
+
+  4. FaceHugger RCE (CVE-2026-44513, CVE-2026-44827, CVE-2026-45804): Malicious
+     model repositories bypass trust_remote_code=False safety control, executing
+     arbitrary code on model load. Fixed in Diffusers 0.38.0.
+
+  Detection approach: This rule targets the email delivery vector — an unsolicited
+  email containing a Hugging Face link from a sender with no prior benign history.
+  It does not require malicious content in the email body because the malicious
+  payload is inside the linked repository.
+
+  False positive risk: MEDIUM. Legitimate developer collaboration over email
+  frequently includes Hugging Face links. The first-contact and unsolicited sender
+  gates are the primary FP mitigations. Organizations with active AI development
+  teams may need to tune with $sender_domains allowlisting.
+
+  Note: This rule does not catch Hugging Face abuse that occurs through organic
+  discovery (search, trending lists), social media, or messaging platforms — only
+  the email delivery vector.
+
+  Reference analysis: https://yanaivanov.com/analysis/huggingface_watering_hole.html
+
+type: "rule"
+severity: "medium"
+source: |
+  type.inbound
+
+  // contains a Hugging Face link
+  and any(body.links,
+          .href_url.domain.root_domain == "huggingface.co"
+          and (
+            // model or dataset repository paths
+            strings.istarts_with(.href_url.path, "/spaces/")
+            or strings.istarts_with(.href_url.path, "/datasets/")
+            or regex.imatch(.href_url.path, '/[^/]+/[^/]+')
+          )
+  )
+
+  // first-contact sender with no prior benign history
+  and not profile.by_sender().any_messages_benign
+  and (
+    profile.by_sender().prevalence in ("new", "outlier")
+    or profile.by_sender_email().days_since.first_contact < 3
+    or not profile.by_sender().solicited
+  )
+
+  // additional signal — download or execution instructions increase confidence
+  // this OR block is optional context, not required
+  and (
+    // developer lure language referencing model loading
+    regex.icontains(body.current_thread.text,
+                    'from_pretrained',
+                    'trust_remote_code',
+                    'huggingface',
+                    'hf_hub',
+                    'model\.load',
+                    'pip install',
+                    'download.*model',
+                    'check out.*model',
+                    'try.*model',
+                    'test.*model'
+    )
+
+    // OR NLU detects credential theft or malware intent
+    or any(ml.nlu_classifier(body.current_thread.text).intents,
+           .name in ("cred_theft", "callback_scam") and .confidence in ("medium", "high")
+    )
+
+    // OR no body text — link-only email, higher risk
+    or length(body.current_thread.text) < 100
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Free file host"
+  - "Social engineering"
+  - "Evasion"
+  - "Impersonation: Brand"
+detection_methods:
+  - "URL analysis"
+  - "Sender analysis"
+  - "Content analysis"
+  - "Natural Language Understanding"
+  - "Header analysis"
+references:
+  - "https://www.hiddenlayer.com/research/malware-found-in-trending-hugging-face-repository-open-oss-privacy-filter"
+  - "https://www.bitdefender.com/en-au/blog/hotforsecurity/hugging-face-android-rat-malware"
+  - "https://cybersecuritynews.com/hackers-use-hugging-face/"
+  - "https://thehackernews.com/2026/08/hugging-face-diffusers-flaws-could-let.html"
+  - "https://yanaivanov.com/analysis/huggingface_watering_hole.html"
+id: "ed673860-f971-5f70-9864-1bca307e9a6f"

@@ -1,0 +1,152 @@
+name: "Link: Developer recruitment lure with fake technical assessment or interview platform — BeaverTail/OtterCookie/WeaselBiscuit/Contagious Interview delivery pattern"
+description: |
+  Detects emails containing developer-targeted job recruitment lures with links
+  to newly registered or suspicious domains impersonating video conferencing
+  platforms, technical assessment platforms, or developer tools — the confirmed
+  email-layer delivery pattern for BeaverTail malware (Lazarus Group / Contagious
+  Interview campaign, active 2023-2026).
+
+  The Contagious Interview attack chain:
+  1. Fake recruiter contacts developer on LinkedIn using a convincing profile
+  2. Follow-up email arrives referencing the LinkedIn conversation, appearing
+     legitimate — developer is already warm from the prior contact
+  3. Email contains a link to a fake technical assessment platform, a fake video
+     conferencing tool, or a GitHub/npm repository to clone and run locally
+  4. Developer clicks or clones — BeaverTail executes, harvesting credentials,
+     browser data, and cryptocurrency wallet information before deploying
+     InvisibleFerret as a persistent backdoor
+
+  Why technically sophisticated targets fall for this:
+  The attack does not exploit technical naivety. It exploits professional behavior.
+  Developers routinely clone and run repositories as part of legitimate technical
+  assessments. The fake platform looks identical to Zoom or a real assessment tool.
+  Career motivation overrides the caution that security training instills.
+
+  Detection gap: The initial LinkedIn contact is outside email security scope.
+  This rule catches the follow-up email delivery step — the last reliable
+  interception point before the developer executes malicious code.
+
+  Confirmed active campaigns (ThreatFox, MalwareBazaar, 2024-2026):
+  - BeaverTail C2 confirmed on Vercel (vercel.app) — ip-vm.vercel.app serving
+    /api/settings/env and /api/settings/windows endpoints (ThreatFox, Sep 17 2026)
+  - OtterCookie (JavaScript cookie stealer, same Lazarus campaign) delivered via
+    jsonkeeper.com — legitimate JSON hosting service used as staging infrastructure
+  - 7 BeaverTail IOCs in ArgusX ThreatFox data (September 2026)
+  - Fake npm packages, fake video conferencing clients, ClickFix variants
+  - Targets: developers, cryptocurrency traders, financial sector employees
+  - Attribution: Lazarus Group / DeceptiveDevelopment / Contagious Interview
+  - OtterCookie and BeaverTail appear together in same attack chain — OtterCookie
+    harvests browser cookies and session tokens after BeaverTail establishes access
+  - WeaselBiscuit (OTX, September 18 2026) — leaner variant stripping BeaverTail and
+    OtterCookie to essentials, adds Chrome extension theft as credential harvesting vector.
+    Same Contagious Interview campaign, same npm supply chain delivery.
+
+  Related analysis: https://yanaivanov.com/analysis/linkedin_open_door.html
+  Related analysis: https://yanaivanov.com/analysis/kimsuky_gitpower_analysis.html
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // developer recruitment lure language
+  and (
+    regex.icontains(subject.subject,
+                    'developer|engineer|software|coding|technical|assessment|interview|position|opportunity|role|hiring'
+    )
+    or regex.icontains(body.current_thread.text,
+                       'technical assessment|coding challenge|take.home|code review|technical interview|coding test|programming challenge',
+                       'clone.*repo|run.*locally|install.*package|npm install|node.*project',
+                       'join.*(?:interview|call|meeting|session).*(?:link|here|below)',
+                       'schedule.*(?:interview|call|meeting)',
+                       '(?:video|virtual).*interview'
+    )
+  )
+
+  // link to suspicious platform — not a known legitimate conferencing or assessment domain
+  and any(body.links,
+    // newly registered domain
+    (
+      network.whois(.href_url.domain).days_old < 30
+      and not .href_url.domain.root_domain in (
+        "zoom.us", "meet.google.com", "teams.microsoft.com",
+        "webex.com", "whereby.com", "around.co",
+        "hackerrank.com", "leetcode.com", "coderpad.io",
+        "codility.com", "testgorilla.com", "greenhouse.io",
+        "lever.co", "workday.com", "linkedin.com",
+        "github.com", "gitlab.com", "npmjs.com"
+      )
+    )
+    or (
+      // domain impersonates legitimate conferencing or dev platform
+      regex.icontains(.href_url.domain.domain,
+                      'zoom|meet|teams|webex|github|gitlab|npm|interview|assess|code'
+      )
+      and not .href_url.domain.root_domain in (
+        "zoom.us", "meet.google.com", "teams.microsoft.com",
+        "webex.com", "github.com", "gitlab.com", "npmjs.com"
+      )
+    )
+    or (
+      // download prompt — executable or package disguised as meeting client
+      regex.icontains(.href_url.path,
+                      '\.(exe|msi|dmg|pkg|deb|zip|tar\.gz)(\?|$)',
+                      'download|install|client|setup'
+      )
+    )
+
+    or (
+      // Vercel hosting used as BeaverTail C2 — confirmed Sep 17 2026
+      .href_url.domain.root_domain == "vercel.app"
+      and regex.icontains(.href_url.path, '/api/settings|/api/env|/api/config')
+    )
+
+    or (
+      // jsonkeeper.com used as OtterCookie staging — legitimate JSON host abused
+      // OtterCookie is JavaScript cookie stealer deployed in same Contagious Interview chain
+      .href_url.domain.root_domain == "jsonkeeper.com"
+    )
+  )
+
+  // first-contact unsolicited sender
+  and not profile.by_sender().solicited
+  and not profile.by_sender().any_messages_benign
+
+  // not a reply thread — cold outreach
+  and (length(headers.references) == 0 or headers.in_reply_to is null)
+
+  // negate known legitimate recruiting platforms
+  and not sender.email.domain.root_domain in (
+    "linkedin.com", "greenhouse.io", "lever.co", "workday.com",
+    "jobvite.com", "icims.com", "smartrecruiters.com", "bamboohr.com",
+    "recruitee.com", "ashbyhq.com", "rippling.com"
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Social engineering"
+  - "Impersonation: Brand"
+  - "Evasion"
+detection_methods:
+  - "URL analysis"
+  - "Content analysis"
+  - "Sender analysis"
+  - "Header analysis"
+  - "Whois analysis"
+references:
+  - "https://yanaivanov.com/analysis/linkedin_open_door.html"
+  - "https://bazaar.abuse.ch"
+  - "https://threatfox.abuse.ch"
+  - "https://attack.mitre.org/software/S1246/"
+  - "https://attack.mitre.org/groups/G0032/"
+id: "ac0e4506-941b-5eb3-8b41-3ae075e2492f"

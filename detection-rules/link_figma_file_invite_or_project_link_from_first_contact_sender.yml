@@ -1,0 +1,97 @@
+name: "Link: Figma file invite or project link from first-contact sender"
+description: |
+  Detects Figma file share notifications and Figma project links from senders
+  with no prior benign contact history.
+
+  Figma's legitimate notification infrastructure (no-reply@email.figma.com and
+  no-reply@mail.figma.com) is being abused in two confirmed attack patterns:
+
+  1. Invite system abuse: Attackers create Figma accounts and use the file
+     invite feature to send mass phishing campaigns. The emails originate from
+     Figma's own domain, pass SPF/DKIM/DMARC, and link to real Figma files
+     containing malicious secondary links or credential theft overlays.
+     Confirmed in Figma community forum (August 2026).
+
+  2. Account takeover pivot: A compromised designer account is used to send
+     Figma project links to all contacts. The email passes every authentication
+     check because it comes from a legitimate Figma account. The project itself
+     contains a hidden phishing link. No credential theft language appears in
+     the email body. Confirmed in Figma community forum reports.
+
+  This rule is additive to two existing Figma rules:
+  - brand_impersonation_figma_doc_access_overlay.yml: targets "proposal"
+    subject + "access document" thumbnail OCR. Very campaign-specific.
+  - link_figma_deck_cred_theft.yml: targets /deck and /design links with
+    NLU-detected credential theft language. Requires suspicious content.
+
+  This rule catches the clean-looking variant — a legitimate Figma
+  notification or project link from a sender the recipient has never
+  interacted with benignly.
+
+  Field note: https://yanaivanov.com/writing/figma_field_note.html
+
+type: "rule"
+severity: "medium"
+source: |
+  type.inbound
+
+  and (
+    // Figma notification infrastructure sending file invites
+    (
+      sender.email.domain.root_domain == "figma.com"
+      and sender.email.email in (
+        "no-reply@email.figma.com",
+        "no-reply@mail.figma.com"
+      )
+      and any(body.links,
+              .href_url.domain.root_domain == "figma.com"
+      )
+    )
+
+    // OR any email containing a Figma project/design/file link
+    or (
+      any(body.links,
+          .href_url.domain.root_domain == "figma.com"
+          and (
+            strings.istarts_with(.href_url.path, "/design/")
+            or strings.istarts_with(.href_url.path, "/file/")
+            or strings.istarts_with(.href_url.path, "/proto/")
+            or strings.istarts_with(.href_url.path, "/community/")
+          )
+      )
+    )
+  )
+
+  // first-contact sender with no prior benign history
+  and not profile.by_sender().any_messages_benign
+  and (
+    profile.by_sender().prevalence in ("new", "outlier")
+    or profile.by_sender_email().days_since.first_contact < 3
+    or not profile.by_sender().solicited
+  )
+
+  // not a known trusted sender
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Social engineering"
+  - "Free file host"
+  - "Evasion"
+detection_methods:
+  - "Sender analysis"
+  - "URL analysis"
+  - "Header analysis"
+references:
+  - "https://yanaivanov.com/writing/figma_field_note.html"
+  - "https://forum.figma.com/report-a-problem-6/phising-threat-36822"
+  - "https://forum.figma.com/report-a-problem-6/suspicious-scam-user-has-invited-you-to-view-the-file-untitled-emails-being-sent-to-contacts-51706"
+id: "4d1484ea-2d8e-5b55-b90a-ca9fb04e524e"

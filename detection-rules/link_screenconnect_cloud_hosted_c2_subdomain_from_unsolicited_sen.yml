@@ -1,0 +1,68 @@
+name: "Link: ScreenConnect cloud-hosted C2 subdomain from unsolicited sender"
+description: |
+  Detects emails containing links to attacker-registered ConnectWise ScreenConnect
+  cloud instances (*.screenconnect.com subdomains) from unsolicited senders.
+  This rule is a companion to link_screenconnect.yml, which detects emails leading
+  to ScreenConnect installers with suspicious relay domains embedded in the binary.
+  That rule does not fire when the relay domain IS screenconnect.com — because the
+  attacker registered their own legitimate ConnectWise cloud instance.
+  ConnectWise allows anyone to create a free cloud-hosted ScreenConnect deployment
+  at a *.screenconnect.com subdomain with no verification. Attackers register these
+  instances as C2 infrastructure — the domain passes every reputation check because
+  screenconnect.com is a legitimate enterprise software platform.
+  Active infrastructure confirmed August 21-22, 2026:
+  - nimblenumbers.screenconnect.com (online)
+  - paretandassociates.screenconnect.com (online)
+  - multiculturalbridge.screenconnect.com (offline)
+  Multiple IPs on 94.154.32.0/24 serving ScreenConnect installers simultaneously.
+  Documented delivery vectors for ScreenConnect via email (2026):
+  - Workplace meeting/document lures with signed malware (Microsoft, Feb 2026)
+  - ClickFix clipboard hijack to ScreenConnect download (TELEPUZ campaign)
+  - Fake Adobe/Zoom update lures (SMOKE#SCREEN, Securonix, Aug 2026)
+  GitHub delivery vector confirmed (ArgusX URLhaus + MalwareBazaar, August 2026):
+  The kaswareteam GitHub organization created 17 repos impersonating crypto wallet
+  and fintech brands (ELLIPAL, DCENT, YouTrust, DocuSign, COLDCARD, Swan, Bull Bitcoin)
+  to deliver ScreenConnect installer ZIPs named InstallerBundle.zip at version 1.1.
+  GitHub removed the organization — all URLs now offline — but the delivery pattern
+  is documented in ArgusX threat feed data combining URLhaus and MalwareBazaar.
+  Legitimate IT departments do not send cold emails with ScreenConnect cloud links.
+  Any *.screenconnect.com subdomain link from an unsolicited sender is suspicious.
+  IOC sources: URLhaus + MalwareBazaar (abuse.ch), August 2026.
+  Analysis: https://yanaivanov.com/analysis/screenconnect_analysis.html
+  Related rule: link_screenconnect.yml (id: 37d21eef-c45c-5348-b764-a6dc48261a91)
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+  // link to a *.screenconnect.com subdomain
+  // root_domain check ensures we match the cloud platform, not screenconnect.com itself
+  and any(body.links,
+          .href_url.domain.root_domain == "screenconnect.com"
+          and .href_url.domain.subdomain is not null
+          and .href_url.domain.subdomain != ""
+  )
+  // unsolicited sender — legitimate IT support does not cold-email ScreenConnect links
+  and not profile.by_sender().solicited
+  // negate highly trusted senders unless DMARC fails
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "Evasion"
+  - "Remote access trojan"
+  - "Social engineering"
+  - "Out of band pivot"
+detection_methods:
+  - "URL analysis"
+  - "Sender analysis"
+references:
+  - "https://yanaivanov.com/analysis/screenconnect_analysis.html"
+  - "https://www.microsoft.com/en-us/security/blog/2026/03/03/signed-malware-impersonating-workplace-apps-deploys-rmm-backdoors/"
+  - "https://thehackernews.com/2026/08/fake-adobe-and-zoom-updates-install.html"
+  - "https://urlhaus.abuse.ch"
+id: "6f558906-e597-53cc-9fe9-7b18d43af4e4"

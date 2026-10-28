@@ -1,0 +1,114 @@
+name: "Service abuse: Jira Service Management invite with phishing or callback lure — PaaP delivery"
+description: |
+  Detects emails sent from Atlassian's legitimate Jira Service Management
+  infrastructure that contain phishing, credential theft, or callback scam
+  content embedded in the invite message.
+
+  Attackers abuse Jira Service Management's "Invite Customers" feature to
+  deliver phishing at scale from Atlassian's own trusted infrastructure.
+  The attack requires no platform compromise — attackers simply:
+  1. Create a free Jira Service Management project
+  2. Embed phishing content in the "Welcome Message" or "Project Description"
+  3. Use "Invite Customers" to submit victim email addresses
+  4. Atlassian's backend generates a signed, branded invite email containing
+     the attacker's content wrapped in Atlassian's trusted template
+
+  The resulting email passes SPF, DKIM, and DMARC — it is sent from Atlassian's
+  own mail infrastructure. Standard sender reputation checks show no risk.
+  The phishing content arrives inside what looks like a legitimate Jira
+  project invitation, complete with Atlassian branding in the footer.
+
+  Documented by Cisco Talos (April 7, 2026) as part of the Platform-as-a-Proxy
+  (PaaP) model. Peak activity: February 17, 2026. Active since December 2025.
+  Campaigns primarily deliver billing lures, fake invoice alerts, callback
+  scam content, and credential phishing redirects.
+
+  Legitimate Jira Service Management invites do not contain billing alerts,
+  invoice notifications, antivirus warnings, or requests to call phone numbers.
+  Any such content in an Atlassian-signed email is a strong indicator of
+  PaaP abuse.
+
+  Related field note: https://yanaivanov.com/writing/paap_field_note.html
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // sent from Atlassian's legitimate Jira infrastructure
+  and (
+    sender.email.domain.root_domain == "atlassian.com"
+    or sender.email.domain.root_domain == "atlassian.net"
+    or strings.icontains(sender.email.email, "jira")
+    or strings.icontains(sender.display_name, "Jira")
+  )
+
+  // DMARC passes — confirms this is genuinely from Atlassian infrastructure
+  and coalesce(headers.auth_summary.dmarc.pass, false)
+
+  // contains phishing, callback scam, or billing lure content
+  // inconsistent with a legitimate Jira project invitation
+  and (
+    // NLU detects credential theft intent
+    any(ml.nlu_classifier(body.current_thread.text).intents,
+        .name in ("cred_theft", "callback_scam") and .confidence != "low"
+    )
+
+    // OR billing/invoice lure language — common PaaP abuse pattern
+    or (
+      regex.icontains(body.current_thread.text,
+                      'invoice|billing|payment|subscription|renewal|charge|transaction|order|receipt',
+                      'your (?:account|subscription|payment|order) (?:has been|was|is) (?:charged|billed|renewed|processed|placed)',
+                      'unauthorized (?:charge|transaction|payment|purchase)',
+                      '(?:cancel|cancellation|refund) (?:your|the) (?:subscription|order|payment)'
+      )
+      and regex.icontains(body.current_thread.text,
+                          '\$\s*\d+|\d+\s*(?:USD|GBP|EUR)',
+                          'call (?:us|our|the) (?:support|helpline|team|number)',
+                          '\+?1?\s*[\(\d][\d\s\-\(\)]{7,}\d'
+      )
+    )
+
+    // OR callback scam brand impersonation
+    or regex.icontains(body.current_thread.text,
+                       'mcafee|norton|geek.{0,5}squad|paypal|best buy|lifelock|symantec|malwarebytes'
+    )
+
+    // OR urgency language inconsistent with project invitations
+    or regex.icontains(body.current_thread.text,
+                       'your (?:account|device|computer|system) (?:has been|is|was) (?:compromised|hacked|infected|suspended|locked)',
+                       'immediate(?:ly)? (?:call|contact|verify|confirm)',
+                       'do not (?:ignore|delete) this (?:email|message|notice|alert)'
+    )
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  // note: Atlassian domains are intentionally NOT negated here —
+  // this rule specifically targets abuse FROM Atlassian infrastructure
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and not sender.email.domain.root_domain in ("atlassian.com", "atlassian.net")
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Credential Phishing"
+  - "Callback Phishing"
+  - "BEC/Fraud"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Social engineering"
+  - "Evasion"
+  - "Free file host"
+detection_methods:
+  - "Content analysis"
+  - "Sender analysis"
+  - "Natural Language Understanding"
+  - "Header analysis"
+references:
+  - "https://blog.talosintelligence.com/weaponizing-saas-notification-pipelines/"
+  - "https://www.trendmicro.com/de_de/research/26/b/spam-campaign-abuses-atlassian-jira.html"
+  - "https://yanaivanov.com/writing/paap_field_note.html"
+id: "93d2c735-ccfb-5267-b0f7-ef82c10f842d"

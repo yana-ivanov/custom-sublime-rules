@@ -1,0 +1,105 @@
+name: "Brand impersonation: N-able / N-central RMM patch or update lure"
+description: |
+  Detects emails impersonating N-able or N-central RMM platform support from
+  non-N-able sender domains, combined with patch, update, or security alert lures.
+
+  N-able N-central is an RMM (Remote Monitoring and Management) platform used by
+  Managed Service Providers (MSPs) to remotely manage hundreds of client endpoints
+  simultaneously. A single compromised N-central instance gives an attacker access
+  to every organization that MSP manages — the downstream blast radius of an MSP
+  compromise is measured in hundreds to thousands of victim organizations.
+
+  CVE-2026-86218 (N-able N-central Static Code Injection) was added to CISA's
+  Known Exploited Vulnerabilities catalog on September 8, 2026, confirming active
+  exploitation. Attackers impersonating N-able support to deliver fake patches or
+  security updates is a confirmed post-disclosure social engineering pattern for
+  high-profile RMM vulnerabilities.
+
+  Detection logic:
+  N-able's legitimate sending domains are n-able.com and nablecrm.com. Legitimate
+  N-central patches are applied from within the product console — N-able never
+  emails MSPs asking them to download and run a patch installer. Any email claiming
+  to be N-able support with a patch download lure from a non-N-able domain is
+  a strong indicator of impersonation.
+
+  Related context: N-able N-central is in the same RMM category as ConnectWise
+  ScreenConnect, which has been heavily abused as C2 infrastructure in 2026
+  campaigns. RMM platforms are high-value targets because compromise of the
+  management platform gives attacker access to all managed endpoints.
+
+  CISA KEV: CVE-2026-86218 added September 8, 2026.
+
+type: "rule"
+severity: "high"
+source: |
+  type.inbound
+
+  // display name impersonates N-able or N-central
+  and (
+    regex.icontains(sender.display_name,
+                    '\bN-able\b|\bNable\b|\bN-central\b|\bNcentral\b'
+    )
+    or regex.icontains(subject.subject,
+                       '\bN-able\b|\bNable\b|\bN-central\b|\bNcentral\b'
+    )
+  )
+
+  // sender is NOT from legitimate N-able domains
+  and not sender.email.domain.root_domain in~ (
+    "n-able.com",
+    "nablecrm.com",
+    "solarwinds.com"
+  )
+
+  // combined with patch, update, security alert, or download lure
+  and (
+    regex.icontains(subject.subject,
+                    'patch|update|security|critical|urgent|vulnerability|CVE|fix|hotfix'
+    )
+    or regex.icontains(body.current_thread.text,
+                       'critical.*(?:patch|update|vulnerability|fix)',
+                       'security.*(?:patch|update|alert|advisory)',
+                       '(?:download|install|apply).*(?:patch|update|fix|hotfix)',
+                       'CVE-\d{4}-\d+',
+                       'immediately.*(?:update|patch|install)',
+                       '(?:your|the)\s+(?:N-central|N-able)\s+(?:instance|server|platform)\s+(?:is|has been|requires)'
+    )
+    or any(body.links,
+        regex.icontains(.href_url.path,
+                        '\.(exe|msi|zip|ps1|bat)(\?|$)'
+        )
+    )
+  )
+
+  // not a reply thread
+  and (length(headers.references) == 0 or headers.in_reply_to is null)
+
+  // unsolicited sender
+  and not profile.by_sender().solicited
+  and not profile.by_sender().any_messages_benign
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+  - "Credential Phishing"
+tactics_and_techniques:
+  - "Impersonation: Brand"
+  - "Social engineering"
+  - "Evasion"
+detection_methods:
+  - "Sender analysis"
+  - "Content analysis"
+  - "Header analysis"
+  - "URL analysis"
+references:
+  - "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
+  - "https://n-able.com/security"
+  - "https://attack.mitre.org/techniques/T1566/"
+id: "b72b5ec5-3ea7-50e9-b3ae-c18e3e2a979d"

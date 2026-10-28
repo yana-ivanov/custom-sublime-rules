@@ -1,0 +1,74 @@
+name: "Attachment: ZIP containing LNK file with GitHub Raw Content link — Operation GitPower delivery pattern"
+description: |
+  Detects emails containing a ZIP archive with an embedded LNK (Windows shortcut)
+  file combined with a link to GitHub Raw Content (raw.githubusercontent.com) in
+  the email body. This specific combination is the documented delivery mechanism
+  for Operation GitPower (Kimsuky/North Korea, August 2026), where AI-generated
+  decoy documents are packaged with weaponized LNK files that execute concealed
+  PowerShell to fetch reconnaissance scripts and RC4-encrypted AsyncRAT payloads
+  from public GitHub repositories disguised as image files.
+
+  The combination of ZIP+LNK attachment and raw.githubusercontent.com body link
+  is highly anomalous in legitimate business communications — developers do not
+  send shortcut files in ZIP archives alongside GitHub raw content links.
+  The GitHub raw content link in the email body serves as the staging URL for
+  follow-on payload delivery after the LNK executes PowerShell on the victim host.
+
+  Active campaign targeting diplomatic missions, military personnel, virtual asset
+  organizations, policy researchers, and academic institutions. Disclosed by
+  Genians Security Center, August 10, 2026.
+
+  September 2026 update (ArgusX OTX cross-reference): 13 new LNK variants
+  collected August 11-19, 2026. Campaign evolution confirmed:
+  - AI-generated decoys using the 'opencode' AI coding agent with HeadlessChrome
+    PDF conversion — placeholder text left unreviewed is a forensic artifact
+  - Pastebin added as backup C2 alongside GitHub PAT-based raw content retrieval
+  - Anti-VM routines detecting virtualization tools added
+  - Persistence via hidden scheduled tasks masquerading as BitLocker and MATLAB
+  Despite increased sophistication, endpoint behaviors remain detectable through
+  behavioral correlation. GitHub PAT-based C2 retrieval pattern unchanged.
+type: "rule"
+severity: "critical"
+source: |
+  type.inbound
+
+  // ZIP attachment containing a LNK file
+  and any(attachments,
+          .file_extension in~ ("zip", "rar", "7z")
+          and any(file.explode(.),
+                  .file_extension =~ "lnk"
+          )
+  )
+
+  // email body contains a GitHub Raw Content link — payload staging URL
+  and any(body.links,
+          strings.icontains(.href_url.domain.fqdn, "raw.githubusercontent.com")
+          or strings.icontains(.href_url.domain.fqdn, "raw.github.com")
+  )
+
+  // negate highly trusted sender domains unless they fail DMARC
+  and not (
+    sender.email.domain.root_domain in $high_trust_sender_root_domains
+    and coalesce(headers.auth_summary.dmarc.pass, false)
+  )
+
+tags:
+  - "Attack surface reduction"
+attack_types:
+  - "Malware/Ransomware"
+tactics_and_techniques:
+  - "LNK"
+  - "Scripting"
+  - "Evasion"
+  - "Impersonation: Brand"
+detection_methods:
+  - "Archive analysis"
+  - "File analysis"
+  - "URL analysis"
+  - "Content analysis"
+references:
+  - "https://blog.genians.com/kimsuky-integrates-ai-into-attack-operations"
+  - "https://attack.mitre.org/techniques/T1059/001/"
+  - "https://attack.mitre.org/techniques/T1195/001/"
+  - "https://yanaivanov.com/analysis/kimsuky_gitpower_analysis.html"
+id: "aff12b92-10ef-50c9-81db-1264f1e27bdf"
