@@ -150,3 +150,5 @@ references:
   - "https://attack.mitre.org/software/S1246/"
   - "https://attack.mitre.org/groups/G0032/"
 id: "ac0e4506-941b-5eb3-8b41-3ae075e2492f"
+authors:
+  - twitter: "ArtemisHex_"

@@ -97,3 +97,5 @@ references:
   - "https://reliaquest.com/blog/threat-spotlight-dns-poisoning-tactics-expand-to-hospitality/"
   - "https://www.microsoft.com/en-us/security/blog/2025/02/13/storm-2372-conducts-device-code-phishing-campaign/"
 id: "cc74a184-d9db-582a-959b-8107476df0da"
+authors:
+  - twitter: "ArtemisHex_"

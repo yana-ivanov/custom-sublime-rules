@@ -81,3 +81,5 @@ references:
   - "https://nvd.nist.gov/vuln/detail/CVE-2025-66376"
   - "https://yanaivanov.com/analysis/roundpress_analysis.html"
 id: ""
+authors:
+  - twitter: "ArtemisHex_"

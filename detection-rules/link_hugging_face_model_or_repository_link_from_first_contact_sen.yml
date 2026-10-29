@@ -124,3 +124,5 @@ references:
   - "https://thehackernews.com/2026/08/hugging-face-diffusers-flaws-could-let.html"
   - "https://yanaivanov.com/analysis/huggingface_watering_hole.html"
 id: "ed673860-f971-5f70-9864-1bca307e9a6f"
+authors:
+  - twitter: "ArtemisHex_"

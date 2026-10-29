@@ -106,3 +106,5 @@ references:
   - "https://nvd.nist.gov/vuln/detail/CVE-2026-42897"
   - "https://yanaivanov.com/analysis/roundpress_part3.html"
 id: "f158fe57-6f01-51a2-bde0-284defbdb873"
+authors:
+  - twitter: "ArtemisHex_"

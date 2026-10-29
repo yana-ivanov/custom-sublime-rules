@@ -117,3 +117,5 @@ references:
   - "https://otx.alienvault.com/pulse/operation-taxshadow"
   - "https://otx.alienvault.com/pulse/tax-season-open-season"
 id: "e44a4ffc-8d45-5c09-850a-b867d8cdebc7"
+authors:
+  - twitter: "ArtemisHex_"

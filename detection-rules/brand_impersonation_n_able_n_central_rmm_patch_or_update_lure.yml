@@ -103,3 +103,5 @@ references:
   - "https://n-able.com/security"
   - "https://attack.mitre.org/techniques/T1566/"
 id: "b72b5ec5-3ea7-50e9-b3ae-c18e3e2a979d"
+authors:
+  - twitter: "ArtemisHex_"

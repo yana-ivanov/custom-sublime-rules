@@ -98,3 +98,5 @@ references:
   - "https://bazaar.abuse.ch"
   - "https://attack.mitre.org/techniques/T1219/"
 id: "5f72006f-9b82-5a12-8228-b57c95245936"
+authors:
+  - twitter: "ArtemisHex_"

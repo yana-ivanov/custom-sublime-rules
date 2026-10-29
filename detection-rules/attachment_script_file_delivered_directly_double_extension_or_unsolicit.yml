@@ -58,3 +58,5 @@ references:
   - "https://attack.mitre.org/techniques/T1059/005/"
   - "https://attack.mitre.org/techniques/T1218/005/"
 id: "c01b6e47-645b-5628-9b34-05d2c54d7deb"
+authors:
+  - twitter: "ArtemisHex_"

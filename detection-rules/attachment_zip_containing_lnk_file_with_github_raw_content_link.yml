@@ -72,3 +72,5 @@ references:
   - "https://attack.mitre.org/techniques/T1195/001/"
   - "https://yanaivanov.com/analysis/kimsuky_gitpower_analysis.html"
 id: "aff12b92-10ef-50c9-81db-1264f1e27bdf"
+authors:
+  - twitter: "ArtemisHex_"

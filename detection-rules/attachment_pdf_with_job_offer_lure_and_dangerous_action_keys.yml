@@ -63,3 +63,5 @@ references:
   - "https://attack.mitre.org/groups/G0032/"
   - "https://yanaivanov.com/analysis/hiring_trap_analysis.html"
 id: "db40ab3c-9eab-5844-843f-d2275b8026fd"
+authors:
+  - twitter: "ArtemisHex_"

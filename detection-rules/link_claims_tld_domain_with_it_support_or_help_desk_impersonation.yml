@@ -83,3 +83,5 @@ references:
   - "https://www.bleepingcomputer.com/news/security/reliaquest-confirms-failed-data-theft-attack-after-shinyhunters-breach/"
   - "https://yanaivanov.com/analysis/shinyhunters-operational-lifecycle.html"
 id: "679fb135-faa2-5e81-9cce-9a596a33f84d"
+authors:
+  - twitter: "ArtemisHex_"
