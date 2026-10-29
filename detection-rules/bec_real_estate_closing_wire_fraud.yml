@@ -86,8 +86,8 @@ source: |
                          "properties",
                          "associates"
       )
-      and not strings.icontains(sender.email.domain.domain,
-                                  strings.split(sender.display_name, " ")[0]
+      and not any(regex.iextract(sender.display_name, '^(?P<first>[A-Za-z]+)'),
+                  strings.icontains(sender.email.domain.domain, .named_groups["first"])
       )
     ),
 
