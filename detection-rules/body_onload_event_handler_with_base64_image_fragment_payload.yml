@@ -57,7 +57,7 @@ source: |
 
     // OR Base64 fragment hidden after # in image src — payload staging pattern
     or regex.icontains(body.html.raw,
-                       '<img[^>]+src\s*=\s*["\']?[^"\'>\s]*;base64,[A-Za-z0-9+/]{20,}#[A-Za-z0-9+/=]{10,}'
+                       '<img[^>]+src\s*=\s*[\"]?[^\">\s]*;base64,[A-Za-z0-9+/]{20,}#[A-Za-z0-9+/=]{10,}'
     )
 
     // OR both signals together — highest confidence OWAReaper pattern
