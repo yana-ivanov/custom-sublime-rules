@@ -44,24 +44,13 @@ source: |
   // combined with IT support, help desk, SSO, or security team impersonation
   and (
     regex.icontains(sender.display_name,
-                    'IT (?:support|helpdesk|help desk|team|department|security)|
-                     help\s*desk|service\s*desk|security\s*team|
-                     IT\s*admin|sysadmin|system\s*administrator'
+                    'IT (?:support|helpdesk|help desk|team|department|security)|help\s*desk|service\s*desk|security\s*team|IT\s*admin|sysadmin|system\s*administrator'
     )
     or regex.icontains(subject.subject,
-                       'IT (?:support|alert|notice|request|ticket)|
-                        help\s*desk|service\s*desk|
-                        (?:password|account|access|login|sign.?in)\s+(?:reset|alert|required|expir)|
-                        (?:verify|confirm|validate)\s+(?:your\s+)?(?:identity|account|access)|
-                        security\s+(?:alert|notice|verification|check)|
-                        (?:SSO|MFA|two.factor|2FA)\s+(?:setup|required|alert|reset)'
+                       'IT (?:support|alert|notice|request|ticket)|help\s*desk|service\s*desk|(?:password|account|access|login|sign.?in)\s+(?:reset|alert|required|expir)|(?:verify|confirm|validate)\s+(?:your\s+)?(?:identity|account|access)|security\s+(?:alert|notice|verification|check)|(?:SSO|MFA|two.factor|2FA)\s+(?:setup|required|alert|reset)'
     )
     or regex.icontains(body.current_thread.text,
-                       'IT (?:support|helpdesk|help desk|department)|
-                        help\s*desk|service\s*desk|
-                        (?:reset|verify|confirm)\s+(?:your\s+)?(?:password|credentials|access)|
-                        (?:SSO|single sign.?on|MFA|authenticator)\s+(?:setup|reset|required)|
-                        (?:click|visit|go to|navigate to)\s+(?:the\s+)?(?:portal|login|sign.?in\s+page)'
+                       'IT (?:support|helpdesk|help desk|department)|help\s*desk|service\s*desk|(?:reset|verify|confirm)\s+(?:your\s+)?(?:password|credentials|access)|(?:SSO|single sign.?on|MFA|authenticator)\s+(?:setup|reset|required)|(?:click|visit|go to|navigate to)\s+(?:the\s+)?(?:portal|login|sign.?in\s+page)'
     )
   )
 

@@ -42,8 +42,8 @@ source: |
 
   // email body contains a GitHub Raw Content link — payload staging URL
   and any(body.links,
-          strings.icontains(.href_url.domain.fqdn, "raw.githubusercontent.com")
-          or strings.icontains(.href_url.domain.fqdn, "raw.github.com")
+          strings.icontains(.href_url.domain.domain, "raw.githubusercontent.com")
+          or strings.icontains(.href_url.domain.domain, "raw.github.com")
   )
 
   // negate highly trusted sender domains unless they fail DMARC

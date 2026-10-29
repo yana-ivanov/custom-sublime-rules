@@ -52,7 +52,7 @@ source: |
     // onload= event handler in body HTML — primary OWAReaper trigger
     // CVE-2026-42897 allows this to execute in vulnerable OWA reading pane
     regex.icontains(body.html.raw,
-                    '<[^>]+\sonload\s*=\s*["\']?[^>]{0,200}'
+                    '<[^>]+\sonload\s*=\s*[^>]{0,200}'
     )
 
     // OR Base64 fragment hidden after # in image src — payload staging pattern
@@ -63,10 +63,10 @@ source: |
     // OR both signals together — highest confidence OWAReaper pattern
     or (
       regex.icontains(body.html.raw,
-                      '<[^>]+\sonload\s*=\s*["\']?[^>]{0,200}'
+                      '<[^>]+\sonload\s*=\s*[^>]{0,200}'
       )
       and regex.icontains(body.html.raw,
-                          'src\s*=\s*["\']?[^"\'>\s]*#[A-Za-z0-9+/=]{10,}'
+                          'src\s*=\s*[\"]?[^\">\s]*#[A-Za-z0-9+/=]{10,}'
       )
     )
   )

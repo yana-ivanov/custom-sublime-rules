@@ -35,7 +35,7 @@ source: |
     // @import tag-splitting inside HTML tag — word characters before @import
     // e.g. <scr@import XYZ;ipt> or onlo@import ABC;ad=
     // legitimate CSS @import always uses url() or quotes — excluded by negation below
-    or regex.icontains(body.html.raw, '<\w+@import[^"\'url][^;]{0,80};')
+    or regex.icontains(body.html.raw, '<\w+@import[^\"url][^;]{0,80};')
     or regex.icontains(body.html.raw, '\son\w+@import[^;]{0,60};')
 
     // svg onload eval(atob()) — reconstructed payload after sanitizer bypass
@@ -51,7 +51,7 @@ source: |
   )
 
   // negate legitimate CSS @import — always uses url() or quoted path
-  and not regex.icontains(body.html.raw, '@import\s*(url\s*\(|["\'])')
+  and not regex.icontains(body.html.raw, '@import\s*(url\s*\(|[\"])')
 
   // negate highly trusted sender domains unless they fail DMARC
   and (

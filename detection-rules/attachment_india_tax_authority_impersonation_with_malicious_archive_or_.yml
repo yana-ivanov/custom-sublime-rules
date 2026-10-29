@@ -31,7 +31,7 @@ source: |
     regex.icontains(strings.replace_confusables(sender.display_name),
                     'income tax (?:department|dept|india)|CBDT|central board of direct taxes|ministry of finance|GST(?:IN)? (?:department|authority|council|refund|notice)|income tax (?:notice|penalty|assessment|return|filing)|ITD (?:notice|alert|penalty)'
     )
-    or regex.icontains(strings.replace_confusables(subject),
+    or regex.icontains(strings.replace_confusables(subject.subject),
                        'income tax (?:notice|penalty|assessment|refund|return|demand|alert)|ITR (?:filing|verification|defect|notice)|CBDT (?:notice|circular|alert)|GST (?:refund|notice|penalty|demand|ARN)|tax (?:penalty|demand|assessment|scrutiny|notice)'
     )
   )
